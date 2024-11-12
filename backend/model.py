@@ -1,7 +1,10 @@
 import requests
 import os
 from dotenv import load_dotenv
-from markdown2 import markdown  # Use markdown library to convert text
+from markdown2 import markdown
+import subprocess
+from flask import url_for  # Import url_for to generate relative paths
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,39 +21,91 @@ headers = {
 }
 
 def process_text_with_gemini(extracted_text):
-    # Define the prompt to send to Gemini
-    prompt = "Generate a complete project plan for the following SRS document, let the plan include different modules, technology stack for each module, time to spend in each module, total time, total number of employees in each module, etc."
+    # Define the prompts
+    project_plan_prompt = "Generate a complete project plan for the following SRS document, let the plan include different modules, technology stack for each module, time to spend in each module, total time, total number of employees in each module, etc."
+    class_diagram_prompt = "Generate Python code(Don't give comments or explanations) that creates a class diagram based on the following SRS document. The code should use a graphics library (e.g., Matplotlib or graphviz). The code should generate a png image and save it under the following path /Users/s.sanjithsuryasrinivasan/CAPSTONE_mybranch/AI-PROJECT-MANAGER/backend/static/class_diagram.png. Don't create the folder. Just put the image in that location. Set the view as True so that the image can be seen."
 
-    # Build the request data payload
-    data = {
+    # Step 1: Generate the project plan
+    project_plan_data = {
         "contents": [
             {
                 "parts": [
                     {
-                        "text": extracted_text + "\n" + prompt
+                        "text": extracted_text + "\n" + project_plan_prompt
                     }
                 ]
             }
         ]
     }
 
-    # Execute the API request to Gemini
-    response = requests.post(API_ENDPOINT, headers=headers, json=data)
+    response = requests.post(API_ENDPOINT, headers=headers, json=project_plan_data)
     
-    # Check for successful response
     if response.status_code == 200:
         result = response.json()
         
-        # Extract the core content (text) from the response
         if 'candidates' in result and result['candidates']:
             content = result['candidates'][0]['content']['parts'][0]['text']
-            
-            # Convert the markdown content to HTML or render properly in markdown
-            formatted_content = markdown(content)  # Converts markdown to HTML
-            return formatted_content
+            formatted_content = markdown(content)
         else:
-            return "No content generated."
+            formatted_content = "No content generated for project plan."
     else:
-        print(f"Failed to get response, status code: {response.status_code}")
+        print(f"Failed to get response for project plan, status code: {response.status_code}")
         print(response.text)
         return None
+
+    # Step 2: Generate the Python code for class diagram
+    class_diagram_data = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": extracted_text + "\n" + class_diagram_prompt
+                    }
+                ]
+            }
+        ]
+    }
+
+    response = requests.post(API_ENDPOINT, headers=headers, json=class_diagram_data)
+
+    if response.status_code == 200:
+        result = response.json()
+
+        if 'candidates' in result and result['candidates']:
+            class_diagram_code = result['candidates'][0]['content']['parts'][0]['text']
+            class_diagram_code = class_diagram_code[9:len(class_diagram_code) - 3]
+
+            print(class_diagram_code)
+            # Execute the generated class diagram code
+            execute_class_diagram_code(class_diagram_code)
+
+            # Append HTML to display the class diagram image if generated
+            # Use url_for to reference the static file location
+            formatted_content += f'<h2>Class Diagram</h2><div><img src="{url_for("static", filename="class_diagram.png")}" alt="Class Diagram" height="2000" width="1000"></div>'
+        else:
+            formatted_content += "<p>No content generated for class diagram code.</p>"
+    else:
+        print(f"Failed to get response for class diagram, status code: {response.status_code}")
+        print(response.text)
+        return None
+
+    return formatted_content
+
+def execute_class_diagram_code(code):
+    # Write the generated Python code to a file
+    with open("class_diagram.py", "w") as file:
+        file.write(code)
+
+    # Execute the Python script to generate the class diagram image
+    result = subprocess.run(["python", "class_diagram.py"], capture_output=True, text=True)
+    print("Execution result:", result.stdout)
+    print("Execution errors:", result.stderr)
+
+    # Check if the output image exists in the static folder
+    output_path = "/Users/s.sanjithsuryasrinivasan/CAPSTONE_mybranch/AI-PROJECT-MANAGER/backend/static/class_diagram.png"
+    if os.path.exists(output_path):
+        print("Class diagram image created successfully.")
+        return True
+    else:
+        print("Failed to create class diagram image.")
+        return False
