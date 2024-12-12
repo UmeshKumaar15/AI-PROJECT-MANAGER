@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
 from firebase_functions import upload_file, manage_file, view_file
 
-app = Flask(__name__)
+app = Flask(__name__,static_folder="static")
 
 @app.route('/')
 def index():
